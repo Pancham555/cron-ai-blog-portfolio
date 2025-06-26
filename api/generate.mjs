@@ -3,14 +3,12 @@
 import Groq from 'groq-sdk';
 import { Octokit } from 'octokit';
 
-// @ts-ignore
 export default async function handler(req, res) {
-  // ◀️ EDIT: set your desired topic here
-  const topic = 'Business and Artificial Intelligence News and Current Updates';
-
-  // Env vars from Vercel
+  const topic = 'Business and Artificial Intelligence News and Current Updates'; // ◀️ your topic
   const groqKey = process.env.GROQ_API_KEY;
   const ghToken = process.env.GITHUB_TOKEN;
+  const owner = 'pancham555';      // ◀️ your GitHub username
+  const repo  = 'cron-ai-blog-portfolio';
 
   if (!groqKey || !ghToken) {
     return res
@@ -18,26 +16,30 @@ export default async function handler(req, res) {
       .send('GROQ_API_KEY and GITHUB_TOKEN must be set');
   }
 
-  // ─── 1. Generate content via groq-sdk ─────────────────────────
-  let aiText;
+  // ─── 1. Generate with the text completions endpoint ─────────────────
+  let aiText = '';
   try {
     const client = new Groq({ apiKey: groqKey });
-    const completion = await client.chat.completions.create({
-      model: 'groq-3',
-      messages: [
-        { role: 'system', content: 'You are a helpful blog-writing assistant.' },
-        { role: 'user',   content: `Write a ~800-word blog post about: ${topic}` }
-      ],
-      max_tokens: 600,
+
+    const completion = await client.completions.create({
+      model: 'llama3-8b-8192',         // known-valid Groq model
+      prompt: `Write an ~800-word blog post about: ${topic}`,
+      max_tokens: 1200,               // ~800 words
       temperature: 0.7,
     });
-    aiText = completion?.choices?.[0]?.message?.content?.trim();
+
+    // `completion.choices[0].text` holds the plain-text reply
+    aiText = completion.choices?.[0]?.text?.trim() || '';
+    if (!aiText) {
+      throw new Error('Empty text returned from Groq AI');
+    }
+
   } catch (err) {
-    console.error('Groq AI error:', err);
-    return res.status(500).send('Error generating content');
+    console.error('❌ Groq AI error:', err.response?.data || err.message || err);
+    return res.status(500).send(`Error generating content: ${err.message}`);
   }
 
-  // ─── 2. Build Markdown file contents ───────────────────────────
+  // ─── 2. Build Markdown ───────────────────────────────────────────────
   const date = new Date().toISOString().slice(0, 10);
   const slug = topic
     .toLowerCase()
@@ -53,25 +55,23 @@ date: "${new Date().toISOString()}"
 ${aiText}
 `;
 
-  // ─── 3. Commit to GitHub via REST API ──────────────────────────
-  const octo = new Octokit({ auth: ghToken });
-  const owner = 'pancham555';      // ◀️ EDIT to your GitHub username
-  const repo  = 'cron-ai-blog-portfolio';
-
+  // ─── 3. Commit to GitHub ────────────────────────────────────────────
   try {
-    // 3.1 Get the latest commit SHA on main
+    const octo = new Octokit({ auth: ghToken });
+
+    // Get latest commit on main
     const { data: refData } = await octo.rest.git.getRef({
       owner, repo, ref: 'heads/main'
     });
     const baseSha = refData.object.sha;
 
-    // 3.2 Get its tree SHA
+    // Get its tree
     const { data: commitData } = await octo.rest.git.getCommit({
       owner, repo, commit_sha: baseSha
     });
     const parentTree = commitData.tree.sha;
 
-    // 3.3 Create a new tree with our blog file blob
+    // Create a new blob/tree for our file
     const { data: treeData } = await octo.rest.git.createTree({
       owner, repo,
       base_tree: parentTree,
@@ -83,7 +83,7 @@ ${aiText}
       }],
     });
 
-    // 3.4 Create a new commit pointing to that tree
+    // Create commit
     const { data: newCommit } = await octo.rest.git.createCommit({
       owner, repo,
       message: `chore: add AI blog post for ${date}`,
@@ -91,17 +91,18 @@ ${aiText}
       parents: [baseSha],
     });
 
-    // 3.5 Update main to point at the new commit
+    // Update the ref to point to new commit
     await octo.rest.git.updateRef({
       owner, repo,
       ref: 'heads/main',
       sha: newCommit.sha,
     });
+
   } catch (err) {
-    console.error('GitHub API error:', err);
+    console.error('❌ GitHub API error:', err);
     return res.status(500).send('Error committing to GitHub');
   }
 
-  // Success!
+  // Success
   return res.status(200).send('Blog generated ✅');
 }
