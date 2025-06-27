@@ -243,12 +243,13 @@ export default async function handler(req, res) {
   const datePart = dateObj.toISOString().slice(0,10);
   const filePath = `src/content/blog/${datePart}-${slug}.md`;
 
+  // Properly formatted frontmatter with no indentation
   const markdown = `---
-  title: '${dynamicTitle}'
-  description: '${dynamicDescription}'
-  icon: '${icon}'
-  pubDate: '${pubDate}'
-  heroImage: '${heroImage}'
+title: '${dynamicTitle}'
+description: '${dynamicDescription}'
+icon: '${icon}'
+pubDate: '${pubDate}'
+heroImage: '${heroImage}'
 ---
 
 ${aiText}
