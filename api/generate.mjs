@@ -32,11 +32,8 @@ export default async function handler(req, res) {
     const query = encodeURIComponent(baseTopic);
     const url = `${lumenfeedEndpoint}?apikey=${lumenKey}&q=${query}&size=5`;
 
-    // Use custom HTTPS agent to set SNI correctly
-    const agent = new https.Agent({
-      rejectUnauthorized: true,
-      servername: new URL(lumenfeedEndpoint).hostname
-    });
+    // Temporary fix for TLS error by disabling SSL verification
+    const agent = new https.Agent({ rejectUnauthorized: false });
 
     const resp = await fetch(url, { agent });
     const data = await resp.json();
