@@ -57,7 +57,7 @@ export default async function handler(req, res) {
   const firstPara = aiText.split(/\n\s*\n/)[0].replace(/'/g, "\\'");
 
   // pick a random icon between 1-10
-  const icon = String(Math.floor(Math.random() * 10) + 1);
+  const icon = String(Math.floor(Math.random() * 10));
 
   // find images in src/assets/
   let heroImage = '';
