@@ -160,7 +160,7 @@ export default async function handler(req, res) {
   // 2️⃣ Load env vars
   const geminiKey = process.env.GEMINI_API_KEY;
   const ghToken   = process.env.GITHUB_TOKEN;
-  const owner     = 'pancham555';      // ◀️ your GitHub username
+  const owner     = 'pancham555';
   const repo      = 'cron-ai-blog-portfolio';
   const branch    = 'master';
 
@@ -220,18 +220,29 @@ export default async function handler(req, res) {
   // ─── 4. Prepare frontmatter ──────────────────────────────────
   const dateObj = new Date();
   const pubDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
-  const slug = dynamicTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
+  let slug = dynamicTitle
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+  // Ensure slug isn't too long (max 50 chars)
+  if (slug.length > 50) slug = slug.slice(0, 50);
+
   const icon = String(Math.floor(Math.random() * 5) + 1);
 
   let heroImage = '';
   try {
-    const files = fs.readdirSync(path.resolve(process.cwd(), 'src/assets')).filter(f => /\.(jpe?g|png|gif|webp)$/i.test(f));
+    const files = fs.readdirSync(path.resolve(process.cwd(), 'src/assets'))
+      .filter(f => /\.(jpe?g|png|gif|webp)$/i.test(f));
     heroImage = files.length ? `/src/assets/${files[0]}` : '';
   } catch {
     heroImage = '';
   }
 
-  const filePath = `src/content/blog/${dateObj.toISOString().slice(0,10)}-${slug}.md`;
+  // Build file path
+  const datePart = dateObj.toISOString().slice(0,10);
+  const filePath = `src/content/blog/${datePart}-${slug}.md`;
+
   const markdown = `---
   title: '${dynamicTitle}'
   description: '${dynamicDescription}'
@@ -250,11 +261,15 @@ ${aiText}
     const baseSha = refData.object.sha;
     const { data: commitData } = await octo.rest.git.getCommit({ owner, repo, commit_sha: baseSha });
     const parentTree = commitData.tree.sha;
-    const { data: treeData } = await octo.rest.git.createTree({ owner, repo, base_tree: parentTree,
+    const { data: treeData } = await octo.rest.git.createTree({
+      owner, repo, base_tree: parentTree,
       tree: [{ path: filePath, mode: '100644', type: 'blob', content: markdown }],
     });
-    const { data: newCommit } = await octo.rest.git.createCommit({ owner, repo,
-      message: `chore: add AI blog post for ${dateObj.toISOString().slice(0,10)}`, tree: treeData.sha, parents: [baseSha],
+    const { data: newCommit } = await octo.rest.git.createCommit({
+      owner, repo,
+      message: `chore: add AI blog post for ${datePart}`,
+      tree: treeData.sha,
+      parents: [baseSha],
     });
     await octo.rest.git.updateRef({ owner, repo, ref: `heads/${branch}`, sha: newCommit.sha });
   } catch (err) {
