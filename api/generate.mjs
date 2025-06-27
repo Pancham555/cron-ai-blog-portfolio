@@ -2,17 +2,19 @@
 
 import Groq from 'groq-sdk';
 import { Octokit } from 'octokit';
+import fs from 'fs';
+import path from 'path';
 
 export default async function handler(req, res) {
-  // ◀️ EDIT: set your desired topic here
+  // 1️⃣ CONFIGURE your topic here:
   const topic = 'Business and Artificial Intelligence News and Current Updates';
 
-  // Env vars from Vercel
+  // 2️⃣ Load env vars
   const groqKey = process.env.GROQ_API_KEY;
   const ghToken = process.env.GITHUB_TOKEN;
-  const owner   = 'pancham555';      // ◀️ EDIT to your GitHub username
+  const owner   = 'pancham555';      // ◀️ your GitHub username
   const repo    = 'cron-ai-blog-portfolio';
-  const branch  = 'master';            // ◀️ EDIT if your default branch is not "main"
+  const branch  = 'master';            // ◀️ your default branch
 
   if (!groqKey || !ghToken) {
     return res
@@ -20,7 +22,7 @@ export default async function handler(req, res) {
       .send('Error: GROQ_API_KEY and GITHUB_TOKEN must be set');
   }
 
-  // ─── 1. Generate content via groq-sdk (chat API) ────────────────────
+  // ─── 1. Generate the full post via Groq chat API ──────────────────
   let aiText = '';
   try {
     const client = new Groq({ apiKey: groqKey });
@@ -34,53 +36,76 @@ export default async function handler(req, res) {
       temperature: 0.7,
     });
     aiText = completion.choices[0].message.content.trim();
-    if (!aiText) {
-      throw new Error('Received empty response from Groq AI');
-    }
+    if (!aiText) throw new Error('Received empty response from Groq AI');
   } catch (err) {
     console.error('❌ Groq AI error:', err.response?.data || err.message || err);
     return res.status(500).send(`Error generating content: ${err.message}`);
   }
 
-  // ─── 2. Build Markdown file contents ───────────────────────────
-  const date = new Date().toISOString().slice(0, 10);
+  // ─── 2. Prepare frontmatter fields ────────────────────────────────
+  const dateObj = new Date();
+  const pubDate = dateObj.toLocaleDateString('en-US', {
+    month: 'short', day: '2-digit', year: 'numeric'
+  });  // e.g. "Jul 08, 2025"
+  
   const slug = topic
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '');
-  const filePath = `src/content/blog/${date}-${slug}.md`;
+
+  // description = first paragraph
+  const firstPara = aiText.split(/\n\s*\n/)[0].replace(/'/g, "\\'");
+
+  // pick a random icon between 1-10
+  const icon = String(Math.floor(Math.random() * 10) + 1);
+
+  // find images in src/assets/
+  let heroImage = '';
+  try {
+    const assetsDir = path.resolve(process.cwd(), 'src/assets');
+    const files = fs.readdirSync(assetsDir)
+      .filter(f => /\.(jpe?g|png|gif|webp)$/i.test(f));
+    heroImage = files.length
+      ? `/src/assets/${files[0]}`
+      : '';
+  } catch {
+    heroImage = '';
+  }
+
+  // build the full markdown
+  const filePath = `src/content/blog/${dateObj.toISOString().slice(0,10)}-${slug}.md`;
   const markdown = `---
-title: "AI-Written: ${topic}"
-date: "${new Date().toISOString()}"
+title: '${topic}'
+description:  '
+${firstPara}
+'
+icon: '${icon}'
+pubDate: '${pubDate}'
+heroImage: '${heroImage}'
 ---
 
 ${aiText}
 `;
 
-  // ─── 3. Commit to GitHub via REST API ──────────────────────────
+  // ─── 3. Commit to GitHub via REST API ─────────────────────────────
   try {
     const octo = new Octokit({ auth: ghToken });
 
-    // 3.1 Get the latest commit SHA on branch
+    // 3.1 Get latest commit SHA on branch
     const { data: refData } = await octo.rest.git.getRef({
-      owner,
-      repo,
-      ref: `heads/${branch}`
+      owner, repo, ref: `heads/${branch}`
     });
     const baseSha = refData.object.sha;
 
     // 3.2 Get its tree SHA
     const { data: commitData } = await octo.rest.git.getCommit({
-      owner,
-      repo,
-      commit_sha: baseSha
+      owner, repo, commit_sha: baseSha
     });
     const parentTree = commitData.tree.sha;
 
-    // 3.3 Create a new tree with our blog file blob
+    // 3.3 Create new tree with our blob
     const { data: treeData } = await octo.rest.git.createTree({
-      owner,
-      repo,
+      owner, repo,
       base_tree: parentTree,
       tree: [{
         path: filePath,
@@ -90,22 +115,21 @@ ${aiText}
       }],
     });
 
-    // 3.4 Create a new commit pointing to that tree
+    // 3.4 Create commit
     const { data: newCommit } = await octo.rest.git.createCommit({
-      owner,
-      repo,
-      message: `chore: add AI blog post for ${date}`,
+      owner, repo,
+      message: `chore: add AI blog post for ${dateObj.toISOString().slice(0,10)}`,
       tree: treeData.sha,
       parents: [baseSha],
     });
 
-    // 3.5 Update branch to point at the new commit
+    // 3.5 Update branch ref
     await octo.rest.git.updateRef({
-      owner,
-      repo,
+      owner, repo,
       ref: `heads/${branch}`,
       sha: newCommit.sha,
     });
+
   } catch (err) {
     console.error('❌ GitHub error status:', err.status || err.response?.status);
     console.error('❌ GitHub error data:', JSON.stringify(err.response?.data, null, 2));
