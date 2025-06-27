@@ -28,23 +28,24 @@ export default async function handler(req, res) {
   // ─── 2. Fetch latest news articles from NewsData.io ───────────
   let fetchedArticles = [];
   try {
-    const url = `${newsDataEndpoint}?apikey=${newsDataKey}&q=${encodeURIComponent(baseTopic)}&language=en&page=0`;
+    // NewsData.io pages start at 1, not 0
+    const url = `${newsDataEndpoint}?apikey=${newsDataKey}&q=${encodeURIComponent(baseTopic)}&language=en&page=1`;
     const resp = await fetch(url);
     if (!resp.ok) {
       throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
     }
     const data = await resp.json();
-    if (data.status !== 'success') {
-      // API returned an error status
-      throw new Error(data.message || 'API status not success');
+    if (data.status === 'error' || !data.results) {
+      throw new Error(data.message || 'API returned an error');
     }
     if (!Array.isArray(data.results) || data.results.length === 0) {
       throw new Error('No articles returned');
     }
-    // Use only first 5 articles
+
+    // Use only first 5 articles (or fewer if less returned)
     fetchedArticles = data.results.slice(0, 5).map(a => ({
-      title: a.title,
-      description: a.description || a.content || ''
+      title: a.title || 'No Title',
+      description: a.description || a.content || 'No description available.'
     }));
   } catch (err) {
     console.error('❌ NewsData.io error:', err);
@@ -60,7 +61,7 @@ export default async function handler(req, res) {
       .join('\n\n');
 
     const prompt =
-      `Here are the 5 latest news articles on ${baseTopic} (title + description):\n\n` +
+      `Here are the ${fetchedArticles.length} latest news articles on ${baseTopic} (title + description):\n\n` +
       `${articlesText}\n\n` +
       'Using the above, write an ~800-word blog post following this format:\n' +
       '- Title: concise & engaging (under 10 words)\n' +
