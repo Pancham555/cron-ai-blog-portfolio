@@ -1,9 +1,9 @@
 {
   "version": 2,
-"cron": [
+  "crons": [
     {
       "path": "/api/generate",
-      "schedule": "30 6 * * *"
+      "schedule": "0 0 * * *"
     }
   ],
   "rewrites": [
