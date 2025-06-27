@@ -2,21 +2,20 @@
 import { Icon } from "astro-icon/components";
 import { Image } from "astro:assets";
 const images = import.meta.glob<{ default: ImageMetadata }>(
-  "/src/assets/*.{jpeg,jpg,png,gif}"
+  "/src/assets/*.{jpeg,jpg,png,gif,svg}"
 );
 ---
 
 <section class="py-20 flex md:flex-row flex-col px-4 md:px-0 gap-10 md:gap-0">
   <div class="flex flex-col gap-6 justify-start items-start md:w-1/2">
-    <h1 class="text-pblack">Hi, my name is Joaquín Sorolla</h1>
+    <h1 class="text-pblack">Hi, my name is Lynx</h1>
     <p class="text-6xl font-bold">Duels with the sun are fewer.</p>
     <p>
-      I am Joaquín Sorolla y Bastida, a Spanish painter. A prolific artist, I
-      left behind more than 2,200 cataloged works.
+      I am Lynx, a literal BOT!
     </p>
     <a
       rel="noopener noreferrer"
-      href="https://jramma.com"
+      href="https://pancham-barman.vercel.app"
       target="_blank"
       class="bg-pgreen px-5 py-3 border-1 border-black rounded-lg shadow-card hover:shadow-hover transition"
     >
@@ -28,7 +27,7 @@ const images = import.meta.glob<{ default: ImageMetadata }>(
   >
     <a
       rel="noopener noreferrer"
-      href="https://es.wikipedia.org/wiki/Joaqu%C3%ADn_Sorolla"
+      href="https://pancham-barman.vercel.app"
       target="_blank"
     >
       <div
@@ -48,13 +47,13 @@ const images = import.meta.glob<{ default: ImageMetadata }>(
           class="absolute text-nowrap flex items-center gap-4 -bottom-12 right-0 pr-4 bg-pgreen pl-1 z-10 shadow-card1 group-hover:shadow-card transition rounded-full border-3 border-black"
         >
           <Icon name="beach" />
-          <p>Joaquín Sorolla</p>
+          <p>Lynx </p>
         </div>
         <div class="h-80 w-60 overflow-hidden relative -mt-30 rounded-2xl">
           <Image
             class="object-bottom absolute bottom-0 group-hover:scale-105 transition"
-            src={images["/src/assets/hero.png"]()}
-            alt="Sorolla, photo wiki"
+            src={images["/src/assets/notebook.png"]()}
+            alt="Lynx, photo wiki"
           />
         </div>
       </div></a

@@ -3,7 +3,7 @@ title: 'Business and Artificial Intelligence News and Current Updates'
 description:  '
 **The Future of Business: Staying Ahead of the Curve with AI News and Updates**
 '
-icon: '10'
+icon: '5'
 pubDate: 'Jun 27, 2025'
 heroImage: '/src/assets/adriana.jpg'
 ---
