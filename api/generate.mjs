@@ -1,7 +1,6 @@
 // api/generate.mjs
 
 import fetch from 'node-fetch';
-import https from 'https';
 import Groq from 'groq-sdk';
 import { Octokit } from 'octokit';
 import fs from 'fs';
@@ -10,43 +9,37 @@ import path from 'path';
 export default async function handler(req, res) {
   // 0️⃣ CONFIGURE your base topic and data source:
   const baseTopic = 'Business and Artificial Intelligence';
-  const lumenfeedEndpoint = 'https://api.lumenfeed.com/v1/articles/search';
+  const newsDataEndpoint = 'https://newsdata.io/api/1/news';
 
   // 1️⃣ Load env vars
-  const lumenKey = process.env.LUMENFEED_API_KEY;
-  const groqKey  = process.env.GROQ_API_KEY;
-  const ghToken  = process.env.GITHUB_TOKEN;
-  const owner    = 'pancham555';
-  const repo     = 'cron-ai-blog-portfolio';
-  const branch   = 'master';
+  const newsDataKey = process.env.NEWSDATA_API_KEY;
+  const groqKey     = process.env.GROQ_API_KEY;
+  const ghToken     = process.env.GITHUB_TOKEN;
+  const owner       = 'pancham555';
+  const repo        = 'cron-ai-blog-portfolio';
+  const branch      = 'master';
 
-  if (!lumenKey || !groqKey || !ghToken) {
+  if (!newsDataKey || !groqKey || !ghToken) {
     return res.status(500).send(
-      'Error: LUMENFEED_API_KEY, GROQ_API_KEY and GITHUB_TOKEN must be set'
+      'Error: NEWSDATA_API_KEY, GROQ_API_KEY and GITHUB_TOKEN must be set'
     );
   }
 
-  // ─── 2. Fetch latest news articles from LumenFeed ─────────────
+  // ─── 2. Fetch latest news articles from NewsData.io ───────────
   let fetchedArticles = [];
   try {
-    const query = encodeURIComponent(baseTopic);
-    const url = `${lumenfeedEndpoint}?apikey=${lumenKey}&q=${query}&size=5`;
-
-    // Temporary fix for TLS error by disabling SSL verification
-    const agent = new https.Agent({ rejectUnauthorized: false });
-
-    const resp = await fetch(url, { agent });
+    const url = `${newsDataEndpoint}?apikey=${newsDataKey}&q=${encodeURIComponent(baseTopic)}&language=en&page=0`;
+    const resp = await fetch(url);
     const data = await resp.json();
-    if (!data.articles || data.articles.length === 0) {
-      throw new Error('No news items returned from LumenFeed');
+    if (!data.results || !Array.isArray(data.results) || data.results.length === 0) {
+      throw new Error(data.status || 'No articles returned');
     }
-    // Keep title, description (or content)
-    fetchedArticles = data.articles.map(a => ({
+    fetchedArticles = data.results.slice(0,5).map(a => ({
       title: a.title,
       description: a.description || a.content || ''
     }));
   } catch (err) {
-    console.error('❌ LumenFeed error:', err);
+    console.error('❌ NewsData.io error:', err);
     return res.status(500).send(`Error fetching news: ${err.message}`);
   }
 
