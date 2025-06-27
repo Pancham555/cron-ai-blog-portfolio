@@ -1,6 +1,7 @@
 // api/generate.mjs
 
 import fetch from 'node-fetch';
+import https from 'https';
 import Groq from 'groq-sdk';
 import { Octokit } from 'octokit';
 import fs from 'fs';
@@ -30,7 +31,14 @@ export default async function handler(req, res) {
   try {
     const query = encodeURIComponent(baseTopic);
     const url = `${lumenfeedEndpoint}?apikey=${lumenKey}&q=${query}&size=5`;
-    const resp = await fetch(url);
+
+    // Use custom HTTPS agent to set SNI correctly
+    const agent = new https.Agent({
+      rejectUnauthorized: true,
+      servername: new URL(lumenfeedEndpoint).hostname
+    });
+
+    const resp = await fetch(url, { agent });
     const data = await resp.json();
     if (!data.articles || data.articles.length === 0) {
       throw new Error('No news items returned from LumenFeed');
