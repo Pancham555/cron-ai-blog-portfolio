@@ -30,11 +30,19 @@ export default async function handler(req, res) {
   try {
     const url = `${newsDataEndpoint}?apikey=${newsDataKey}&q=${encodeURIComponent(baseTopic)}&language=en&page=0`;
     const resp = await fetch(url);
-    const data = await resp.json();
-    if (!data.results || !Array.isArray(data.results) || data.results.length === 0) {
-      throw new Error(data.status || 'No articles returned');
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
     }
-    fetchedArticles = data.results.slice(0,5).map(a => ({
+    const data = await resp.json();
+    if (data.status !== 'success') {
+      // API returned an error status
+      throw new Error(data.message || 'API status not success');
+    }
+    if (!Array.isArray(data.results) || data.results.length === 0) {
+      throw new Error('No articles returned');
+    }
+    // Use only first 5 articles
+    fetchedArticles = data.results.slice(0, 5).map(a => ({
       title: a.title,
       description: a.description || a.content || ''
     }));
@@ -48,7 +56,7 @@ export default async function handler(req, res) {
   try {
     const client = new Groq({ apiKey: groqKey });
     const articlesText = fetchedArticles
-      .map((a, i) => `(${i+1}) ${a.title}\n${a.description}`)
+      .map((a, i) => `(${i + 1}) ${a.title}\n${a.description}`)
       .join('\n\n');
 
     const prompt =
@@ -78,7 +86,7 @@ export default async function handler(req, res) {
   // ─── 4. Split out title & description from AI output ──────────
   const [titleLine, subtitleLine, ...bodyLines] = aiText.split('\n');
   const dynamicTitle = titleLine.replace(/^Title:\s*/i, '') || baseTopic;
-  const dynamicDescription = subtitleLine.replace(/^Subtitle:\s*/i, '') || bodyLines[0] || '';
+  const dynamicDescription = subtitleLine.replace(/^Subtitle:\s*/i, '') || '';
   const bodyContent = bodyLines.join('\n').trim();
 
   // ─── 5. Prepare frontmatter & markdown ────────────────────────
@@ -92,9 +100,11 @@ export default async function handler(req, res) {
     const files = fs.readdirSync(path.resolve(process.cwd(), 'src/assets'))
       .filter(f => /\.(jpe?g|png|gif|webp)$/i.test(f));
     heroImage = files.length ? `/src/assets/${files[0]}` : '';
-  } catch { heroImage = ''; }
+  } catch {
+    heroImage = '';
+  }
 
-  const filePath = `src/content/blog/${dateObj.toISOString().slice(0,10)}-${slug}.md`;
+  const filePath = `src/content/blog/${dateObj.toISOString().slice(0, 10)}-${slug}.md`;
   const markdown = `---
 metadata:
   title: '${dynamicTitle}'
@@ -115,13 +125,17 @@ ${bodyContent}
     const { data: commitData } = await octo.rest.git.getCommit({ owner, repo, commit_sha: baseSha });
     const parentTree = commitData.tree.sha;
     const { data: treeData } = await octo.rest.git.createTree({
-      owner, repo, base_tree: parentTree,
+      owner,
+      repo,
+      base_tree: parentTree,
       tree: [{ path: filePath, mode: '100644', type: 'blob', content: markdown }],
     });
     const { data: newCommit } = await octo.rest.git.createCommit({
-      owner, repo,
-      message: `chore: add AI blog post for ${dateObj.toISOString().slice(0,10)}`,
-      tree: treeData.sha, parents: [baseSha],
+      owner,
+      repo,
+      message: `chore: add AI blog post for ${dateObj.toISOString().slice(0, 10)}`,
+      tree: treeData.sha,
+      parents: [baseSha],
     });
     await octo.rest.git.updateRef({ owner, repo, ref: `heads/${branch}`, sha: newCommit.sha });
   } catch (err) {
