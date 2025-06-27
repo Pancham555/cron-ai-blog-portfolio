@@ -44,7 +44,7 @@ export default async function handler(req, res) {
       model: 'llama3-8b-8192',
       messages: [
         { role: 'system', content: 'You are an expert headline writer.' },
-        { role: 'user', content: `Provide a concise, engaging blog title (maximum 6 words). Avoid any markdown syntax like ** and punctuation if not necessary.\n\n${aiText}` }
+        { role: 'user', content: `Provide a concise, 6-word max title that clearly reflects the topic: "${baseTopic}". Only return the title text without markdown or intros.` }
       ],
       max_tokens: 20,
       temperature: 0.5,
@@ -64,22 +64,21 @@ export default async function handler(req, res) {
       model: 'llama3-8b-8192',
       messages: [
         { role: 'system', content: 'You are a professional copywriter.' },
-        { role: 'user', content: `Write a 12-word max summary for this blog post. No markdown, no phrases like “Here is…”\n\n${aiText}` }
+        { role: 'user', content: `Write a pure, 12-word max summary for a blog post on "${baseTopic}". No markdown, no intro phrases—just the summary.` }
       ],
       max_tokens: 30,
       temperature: 0.7,
     });
     dynamicDescription = descCompletion.choices[0].message.content.trim();
-    dynamicDescription = dynamicDescription.replace(/\*/g, '').replace(/['"]/g, '');
-    dynamicDescription = dynamicDescription.replace(/Here\s+is.*?[.!?]/i, '').trim();
+    dynamicDescription = dynamicDescription.replace(/Here is.*?:\s*/i, '').replace(/\*/g, '').replace(/['\"]/g, '');
     if (!dynamicDescription) {
       const firstParaRaw = aiText.split(/\n\s*\n/)[0].trim();
-      dynamicDescription = firstParaRaw.slice(0, 100);
+      dynamicDescription = firstParaRaw.split(' ').slice(0,12).join(' ');
     }
   } catch (err) {
     console.error('❌ Description AI error:', err.message || err);
     const firstParaRaw = aiText.split(/\n\s*\n/)[0].trim();
-    dynamicDescription = firstParaRaw.slice(0, 100);
+    dynamicDescription = firstParaRaw.split(' ').slice(0,12).join(' ');
   }
 
   const dateObj = new Date();
