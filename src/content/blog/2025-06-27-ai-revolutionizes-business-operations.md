@@ -1,8 +1,6 @@
 ---
   title: 'AI Revolutionizes Business Operations'
-  description: 'Here is a 12-word summary of the blog post:
-
-AI transforms business landscape with rapid adoption, innovation, and applications.'
+  description: 'AI transforms business landscape with rapid adoption, innovation, and applications.'
   icon: '5'
   pubDate: 'Jun 27, 2025'
   heroImage: '/src/assets/adriana.jpg'
