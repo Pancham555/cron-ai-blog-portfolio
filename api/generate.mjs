@@ -1,12 +1,48 @@
-// api/generate.mjs
-
 import Groq from 'groq-sdk';
 import { Octokit } from 'octokit';
 import fs from 'fs';
 import path from 'path';
+import axios from 'axios';
 
 export default async function handler(req, res) {
   const baseTopic = 'Business and Artificial Intelligence News and Current Updates';
+
+  // News API setup
+  const newsApiKey = process.env.NEWS_API_KEY;
+  const newsSources = [
+    'bbc-news',
+    'cnn',
+    'the-verge',
+    'techcrunch',
+    'business-insider'
+  ];
+
+  if (!newsApiKey) {
+    return res.status(500).send('Error: NEWS_API_KEY must be set');
+  }
+
+  // Fetch top headlines from multiple sources
+  let articles = [];
+  try {
+    const url = `https://newsapi.org/v2/top-headlines?sources=${newsSources.join(',')}&pageSize=5&apiKey=${newsApiKey}`;
+    const response = await axios.get(url);
+    articles = response.data.articles;
+    if (!articles || articles.length === 0) {
+      throw new Error('No articles fetched from News API');
+    }
+  } catch (err) {
+    console.error('❌ News API error:', err.message || err);
+    return res.status(500).send(`Error fetching news: ${err.message}`);
+  }
+
+  // Build a unified raw text of all articles
+  const combinedArticlesText = articles
+    .map((a, i) => `Article ${i + 1} from ${a.source.name}:
+Title: ${a.title}
+Description: ${a.description || ''}
+Content: ${a.content || ''}
+URL: ${a.url}`)
+    .join('\n\n');
 
   const groqKey = process.env.GROQ_API_KEY;
   const ghToken = process.env.GITHUB_TOKEN;
@@ -18,14 +54,16 @@ export default async function handler(req, res) {
     return res.status(500).send('Error: GROQ_API_KEY and GITHUB_TOKEN must be set');
   }
 
+  // Generate unified article via AI
   let aiText = '';
   try {
     const client = new Groq({ apiKey: groqKey });
     const completion = await client.chat.completions.create({
       model: 'llama3-8b-8192',
       messages: [
-        { role: 'system', content: 'You are a helpful blog-writing assistant.' },
-        { role: 'user', content: `Write an ~800-word blog post about: ${baseTopic}. Keep it concise and focused—avoid filler phrases like ‘Here’s…’, ‘In this post…’, or other introductory lead-ins.` }
+        { role: 'system', content: 'You are a news summarization assistant.' },
+        { role: 'user', content: `Read these latest news articles on ${baseTopic} and write an ~800-word unified article that weaves together the key points. Be concise and avoid filler.` },
+        { role: 'user', content: combinedArticlesText }
       ],
       max_tokens: 1200,
       temperature: 0.7,
@@ -37,24 +75,22 @@ export default async function handler(req, res) {
     return res.status(500).send(`Error generating content: ${err.message}`);
   }
 
-  let dynamicTitle = '';
+  // Generate dynamic title and description as before...
+  let dynamicTitle = baseTopic;
   try {
     const client = new Groq({ apiKey: groqKey });
     const titleCompletion = await client.chat.completions.create({
       model: 'llama3-8b-8192',
       messages: [
         { role: 'system', content: 'You are an expert headline writer.' },
-        { role: 'user', content: `Provide a concise, 6-word max title that clearly reflects the topic: "${baseTopic}". Only return the title text without markdown or intros.` }
+        { role: 'user', content: `Provide a concise, 6-word max title reflecting this unified news article.` }
       ],
       max_tokens: 20,
       temperature: 0.5,
     });
-    dynamicTitle = titleCompletion.choices[0].message.content.trim();
-    dynamicTitle = dynamicTitle.replace(/\*/g, '').replace(/['"]/g, '');
-    if (!dynamicTitle) dynamicTitle = baseTopic;
+    dynamicTitle = titleCompletion.choices[0].message.content.trim().replace(/["'*]/g, '') || dynamicTitle;
   } catch (err) {
     console.error('❌ Title AI error:', err.message || err);
-    dynamicTitle = baseTopic;
   }
 
   let dynamicDescription = '';
@@ -64,29 +100,22 @@ export default async function handler(req, res) {
       model: 'llama3-8b-8192',
       messages: [
         { role: 'system', content: 'You are a professional copywriter.' },
-        { role: 'user', content: `Write a pure, 12-word max summary for a blog post on "${baseTopic}". No markdown, no intro phrases—just the summary.` }
+        { role: 'user', content: `Write a pure, 12-word max summary for this article. No intros.` }
       ],
       max_tokens: 30,
       temperature: 0.7,
     });
-    dynamicDescription = descCompletion.choices[0].message.content.trim();
-    dynamicDescription = dynamicDescription.replace(/Here is.*?:\s*/i, '').replace(/\*/g, '').replace(/['\"]/g, '');
-    if (!dynamicDescription) {
-      const firstParaRaw = aiText.split(/\n\s*\n/)[0].trim();
-      dynamicDescription = firstParaRaw.split(' ').slice(0,12).join(' ');
-    }
+    dynamicDescription = descCompletion.choices[0].message.content.trim().replace(/Here is.*?:\s*/i, '') || aiText.split('\n\n')[0].split(' ').slice(0,12).join(' ');
   } catch (err) {
     console.error('❌ Description AI error:', err.message || err);
-    const firstParaRaw = aiText.split(/\n\s*\n/)[0].trim();
-    dynamicDescription = firstParaRaw.split(' ').slice(0,12).join(' ');
+    dynamicDescription = aiText.split('\n\n')[0].split(' ').slice(0,12).join(' ');
   }
 
+  // Prepare markdown and commit to GitHub
   const dateObj = new Date();
   const pubDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
-
   const slug = dynamicTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
   const icon = String(Math.floor(Math.random() * 5) + 1);
-
   let heroImage = '';
   try {
     const assetsDir = path.resolve(process.cwd(), 'src/assets');
@@ -119,7 +148,7 @@ ${aiText}
       tree: [{ path: filePath, mode: '100644', type: 'blob', content: markdown }],
     });
     const { data: newCommit } = await octo.rest.git.createCommit({
-      owner, repo, message: `chore: add AI blog post for ${dateObj.toISOString().slice(0,10)}`,
+      owner, repo, message: `chore: add unified news article for ${dateObj.toISOString().slice(0,10)}`,
       tree: treeData.sha, parents: [baseSha],
     });
     await octo.rest.git.updateRef({ owner, repo, ref: `heads/${branch}`, sha: newCommit.sha });
@@ -128,5 +157,5 @@ ${aiText}
     return res.status(500).send(`Error committing to GitHub: ${err.message}`);
   }
 
-  return res.status(200).send('Blog generated ✅');
+  return res.status(200).send('Unified article generated ✅');
 }
