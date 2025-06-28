@@ -17,46 +17,54 @@ export default async function handler(req, res) {
     return res.status(500).send('Error: Required API keys are not set');
   }
 
-  // 1. Fetch top headlines or fallback to 'everything'
+  // 1. Attempt to fetch top headlines
   const sources = ['bbc-news', 'cnn', 'the-verge', 'techcrunch', 'business-insider'];
   let articles = [];
-
   try {
-    const url = `https://newsapi.org/v2/top-headlines?sources=${sources.join(',')}&pageSize=5&apiKey=${newsApiKey}`;
-    const { data } = await axios.get(url);
-    if (data.status === 'ok' && Array.isArray(data.articles) && data.articles.length) {
+    const headlinesUrl = `https://newsapi.org/v2/top-headlines?sources=${sources.join(
+      ',')}&pageSize=5&apiKey=${newsApiKey}`;
+    const { data } = await axios.get(headlinesUrl);
+    if (data.status === 'ok' && Array.isArray(data.articles)) {
       articles = data.articles;
+    } else {
+      console.warn('NewsAPI top-headlines returned no articles, falling back.', data);
     }
-  } catch {}
+  } catch (err) {
+    console.warn('Error fetching top-headlines:', err.message);
+  }
 
+  // 2. Fallback to 'everything' query if no headlines
   if (!articles.length) {
-    const query = encodeURIComponent('business artificial intelligence');
-    const url = `https://newsapi.org/v2/everything?q=${query}&language=en&pageSize=5&sortBy=publishedAt&apiKey=${newsApiKey}`;
     try {
-      const { data } = await axios.get(url);
+      const query = encodeURIComponent('business artificial intelligence');
+      const everythingUrl = `https://newsapi.org/v2/everything?q=${query}&language=en&pageSize=5&sortBy=publishedAt&apiKey=${newsApiKey}`;
+      const { data } = await axios.get(everythingUrl);
       if (data.status === 'ok' && Array.isArray(data.articles)) {
         articles = data.articles;
+      } else {
+        console.error('NewsAPI everything returned no articles.', data);
       }
-    } catch {}
+    } catch (err) {
+      console.error('Error fetching everything:', err.message);
+    }
   }
 
   if (!articles.length) {
     return res.status(500).send('Error: No news articles found from NewsAPI');
   }
 
-  // 2. Prepare combined text for AI (with URLs)
+  // Combine and truncate for AI prompt
   const combined = articles
-    .map((a, i) =>
-      `Article ${i + 1} (${a.source.name}): ${a.title} - ${a.url}`
-    )
-    .join('\n');
+    .map((a, i) => `Article ${i + 1} from ${a.source.name}:\nTitle: ${a.title}\nDescription: ${a.description || ''}\nContent: ${a.content || ''}\nURL: ${a.url}`)
+    .join('\n\n')
+    .slice(0, 8000);
 
-  // 3. Generate unified markdown article with links
+  // 3. Generate unified article
   let aiText;
   try {
     const client = new Groq({ apiKey: groqKey });
-    const prompt = `Read these articles on ${baseTopic} and write an ~800-word markdown-formatted article that weaves together the key points. Include links using [title](url) syntax. Avoid any filler intro like 'Here is'.\n\n${combined}`;
-    const { choices } = await client.chat.completions.create({
+    const prompt = `Read these articles on ${baseTopic} and write an ~800-word unified article: \n\n${combined}; try to use markdown syntax to make it more readable.`;
+    const response = await client.chat.completions.create({
       model: 'llama3-8b-8192',
       messages: [
         { role: 'system', content: 'You are a news summarization assistant.' },
@@ -65,72 +73,75 @@ export default async function handler(req, res) {
       max_tokens: 1200,
       temperature: 0.7
     });
-    aiText = choices[0].message.content.trim();
+    aiText = response.choices[0].message.content.trim();
   } catch (err) {
+    console.error('Groq AI summarization error:', err.message);
     return res.status(500).send(`AI error: ${err.message}`);
   }
 
-  // 4. Generate title without filler words
+  // 4. Title & description
   let title = baseTopic;
   try {
     const client = new Groq({ apiKey: groqKey });
-    const { choices } = await client.chat.completions.create({
+    const tRes = await client.chat.completions.create({
       model: 'llama3-8b-8192',
       messages: [
         { role: 'system', content: 'You are an expert headline writer.' },
-        { role: 'user', content: 'Craft a concise 6-word maximum title for this article. No filler like "Here is".' },
+        { role: 'user', content: 'Create a concise, 6-word max title for this article without using filler words like here is; just return me the title.' },
         { role: 'user', content: aiText }
       ],
       max_tokens: 20,
       temperature: 0.5
     });
-    title = choices[0].message.content.trim().replace(/['"*]/g, '');
-  } catch {}
+    title = tRes.choices[0].message.content.trim().replace(/["'*]/g, '');
+  } catch (e) {
+    console.warn('Title generation failed:', e.message);
+  }
 
-  // 5. Generate description without filler
-  let description = '';
+  let description;
   try {
     const client = new Groq({ apiKey: groqKey });
-    const { choices } = await client.chat.completions.create({
+    const dRes = await client.chat.completions.create({
       model: 'llama3-8b-8192',
       messages: [
         { role: 'system', content: 'You are a professional copywriter.' },
-        { role: 'user', content: 'Write a 12-word maximum summary for this article. No filler like "Here is".' },
+        { role: 'user', content: 'Write a pure, 12-word max summary for this article without any filler words like here is... Just return me the description.' },
         { role: 'user', content: aiText }
       ],
       max_tokens: 30,
       temperature: 0.7
     });
-    description = choices[0].message.content.trim().replace(/['"*]/g, '');
-  } catch {
-    description = aiText.split('\n')[0].split(' ').slice(0, 12).join(' ');
+    description = dRes.choices[0].message.content.trim().replace(/Here is.*?:\s*/i, '').replace(/["'*]/g, '');
+  } catch (e) {
+    console.warn('Description generation failed:', e.message);
+    description = aiText.split('\n\n')[0].split(' ').slice(0,12).join(' ');
   }
 
-  // 6. Prepare markdown file
+  // 5. Prepare markdown
   const dateObj = new Date();
   const pubDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
   const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
   const icon = `${Math.floor(Math.random() * 5) + 1}`;
   let heroImage = '';
   try {
-    const assets = fs.readdirSync(path.resolve(process.cwd(), 'src/assets'));
-    const file = assets.find(f => /\.(jpe?g|png|gif|webp)$/i.test(f));
-    heroImage = file ? `/src/assets/${file}` : '';
+    const dir = path.resolve(process.cwd(), 'src/assets');
+    const files = fs.readdirSync(dir).filter(f => /\.(jpe?g|png|gif|webp)$/i.test(f));
+    heroImage = files.length ? `/src/assets/${files[0]}` : '';
   } catch {}
 
   const filePath = `src/content/blog/${dateObj.toISOString().slice(0,10)}-${slug}.md`;
   const markdown = `---
-  title: '${title}'
-  description: '${description}'
-  icon: '${icon}'
-  pubDate: '${pubDate}'
-  heroImage: '${heroImage}'
-  ---
+title: '${title}'
+description: '${description}'
+icon: '${icon}'
+pubDate: '${pubDate}'
+heroImage: '${heroImage}'
+---
 
 ${aiText}
 `;
 
-  // 7. Commit to GitHub
+  // 6. Commit to GitHub
   try {
     const octo = new Octokit({ auth: ghToken });
     const { data: refData } = await octo.rest.git.getRef({ owner, repo, ref: `heads/${branch}` });
@@ -141,6 +152,7 @@ ${aiText}
     const { data: newCommit } = await octo.rest.git.createCommit({ owner, repo, message: `chore: add unified news article for ${dateObj.toISOString().slice(0,10)}`, tree: treeData.sha, parents: [baseSha] });
     await octo.rest.git.updateRef({ owner, repo, ref: `heads/${branch}`, sha: newCommit.sha });
   } catch (err) {
+    console.error('GitHub commit failed:', err.message);
     return res.status(500).send(`GitHub error: ${err.message}`);
   }
 
