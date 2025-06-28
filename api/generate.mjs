@@ -24,9 +24,7 @@ export default async function handler(req, res) {
   // Fetch top headlines from multiple sources
   let articles = [];
   try {
-    const url = `https://newsapi.org/v2/top-headlines?sources=${newsSources.join(
-      ','
-    )}&pageSize=5&apiKey=${newsApiKey}`;
+    const url = `https://newsapi.org/v2/top-headlines?sources=${newsSources.join(',')}&pageSize=5&apiKey=${newsApiKey}`;
     const response = await axios.get(url);
     articles = response.data.articles;
   } catch (err) {
@@ -40,13 +38,11 @@ export default async function handler(req, res) {
 
   // Build a unified raw text of all articles, truncated to avoid exceeding token limits
   const combinedArticlesText = articles
-    .map((a, i) =>
-      `Article ${i + 1} from ${a.source.name}:
+    .map((a, i) => `Article ${i + 1} from ${a.source.name}:
 Title: ${a.title}
 Description: ${a.description || ''}
 Content: ${a.content || ''}
-URL: ${a.url}`
-    )
+URL: ${a.url}`)
     .join('\n\n');
 
   // Truncate input to ~8000 characters for safety
@@ -60,9 +56,7 @@ URL: ${a.url}`
   const branch = 'master';
 
   if (!groqKey || !ghToken) {
-    return res
-      .status(500)
-      .send('Error: GROQ_API_KEY and GITHUB_TOKEN must be set');
+    return res.status(500).send('Error: GROQ_API_KEY and GITHUB_TOKEN must be set');
   }
 
   // Generate unified article via AI
@@ -121,8 +115,7 @@ URL: ${a.url}`
       temperature: 0.7,
     });
     const rawDesc = descCompletion.choices[0].message.content.trim();
-    dynamicDescription = rawDesc.replace(/Here is.*?:\s*/i, '') ||
-      aiText.split('\n\n')[0].split(' ').slice(0, 12).join(' ');
+    dynamicDescription = rawDesc.replace(/Here is.*?:\s*/i, '') || aiText.split('\n\n')[0].split(' ').slice(0, 12).join(' ');
   } catch (err) {
     console.error('❌ Description AI error:', err.message);
     dynamicDescription = aiText.split('\n\n')[0].split(' ').slice(0, 12).join(' ');
@@ -130,36 +123,25 @@ URL: ${a.url}`
 
   // Prepare markdown frontmatter
   const dateObj = new Date();
-  const pubDate = dateObj.toLocaleDateString('en-US', {
-    month: 'short',
-    day: '2-digit',
-    year: 'numeric',
-  });
-  const slug = dynamicTitle
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '');
+  const pubDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+  const slug = dynamicTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
   const icon = String(Math.floor(Math.random() * 5) + 1);
   let heroImage = '';
   try {
     const assetsDir = path.resolve(process.cwd(), 'src/assets');
-    const files = fs
-      .readdirSync(assetsDir)
-      .filter((f) => /\.(jpe?g|png|gif|webp)$/i.test(f));
+    const files = fs.readdirSync(assetsDir).filter((f) => /\.(jpe?g|png|gif|webp)$/i.test(f));
     heroImage = files.length ? `/src/assets/${files[0]}` : '';
   } catch {
     heroImage = '';
   }
 
-  const filePath = `src/content/blog/${dateObj
-    .toISOString()
-    .slice(0, 10)}-${slug}.md`;
+  const filePath = `src/content/blog/${dateObj.toISOString().slice(0, 10)}-${slug}.md`;
   const markdown = `---
-  title: '${dynamicTitle}'
-  description: '${dynamicDescription}'
-  icon: '${icon}'
-  pubDate: '${pubDate}'
-  heroImage: '${heroImage}'
+title: '${dynamicTitle}'
+description: '${dynamicDescription}'
+icon: '${icon}'
+pubDate: '${pubDate}'
+heroImage: '${heroImage}'
 ---
 
 ${aiText}
@@ -187,9 +169,7 @@ ${aiText}
     } = await octo.rest.git.createCommit({
       owner,
       repo,
-      message: `chore: add unified news article for ${dateObj
-        .toISOString()
-        .slice(0, 10)}`,
+      message: `chore: add unified news article for ${dateObj.toISOString().slice(0, 10)}`,
       tree: newTreeSha,
       parents: [baseSha],
     });
