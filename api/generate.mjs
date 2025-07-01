@@ -80,7 +80,8 @@ export default async function handler(req, res) {
   }
 
   // 4. Title & description
-  let title = baseTopic;
+  // let title = baseTopic;
+  let title;
   try {
     const client = new Groq({ apiKey: groqKey });
     const tRes = await client.chat.completions.create({
