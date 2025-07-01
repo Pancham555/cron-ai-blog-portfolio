@@ -63,7 +63,7 @@ export default async function handler(req, res) {
   let aiText;
   try {
     const client = new Groq({ apiKey: groqKey });
-    const prompt = `Read these articles on ${baseTopic} and write an ~800-word unified article: \n\n${combined}; try to use markdown syntax to make it more readable.`;
+    const prompt = `Read these articles on ${baseTopic} and write an ~800-word unified article using the standard markdown syntax and add numeric or other details if you could find any for this : (\n\n${combined}).`;
     const response = await client.chat.completions.create({
       model: 'llama3-8b-8192',
       messages: [
@@ -87,7 +87,7 @@ export default async function handler(req, res) {
       model: 'llama3-8b-8192',
       messages: [
         { role: 'system', content: 'You are an expert headline writer.' },
-        { role: 'user', content: 'Create a concise, 6-word max title for this article without using filler words like here is; just return me the title.' },
+        { role: 'user', content: `Create a concise, 6-word max title for this article text (${aiText}) without using filler words like here is; just return me the title.` },
         { role: 'user', content: aiText }
       ],
       max_tokens: 20,
@@ -105,7 +105,7 @@ export default async function handler(req, res) {
       model: 'llama3-8b-8192',
       messages: [
         { role: 'system', content: 'You are a professional copywriter.' },
-        { role: 'user', content: 'Write a pure, 12-word max summary for this article without any filler words like here is... Just return me the description.' },
+        { role: 'user', content: `Write a pure, 12-word max summary for this article (${aiText}) without any filler words like here is... Just return me the description.` },
         { role: 'user', content: aiText }
       ],
       max_tokens: 30,
