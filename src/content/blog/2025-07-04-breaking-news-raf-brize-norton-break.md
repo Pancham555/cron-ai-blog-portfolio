@@ -1,12 +1,6 @@
 ---
-title: 'Here are the concise 6-word max title options:
-
-Breaking News:
-
- RAF Brize Norton Break'
-description: 'Heres a 12-word max summary for the article:
-
-Breaking news on break-ins, celebrity trials, and tech deals, with no AI updates'
+title: 'Breaking News: RAF Brize Norton Break'
+description: 'Breaking news on break-ins, celebrity trials, and tech deals, with no AI updates'
 icon: '3'
 pubDate: 'Jul 04, 2025'
 heroImage: '/src/assets/adriana.jpg'
